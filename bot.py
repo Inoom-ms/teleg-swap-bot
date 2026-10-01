@@ -42,7 +42,7 @@ def send_welcome(message):
     buttons = [types.InlineKeyboardButton(f"فوج {i}", callback_data=f"curr_{i}") for i in range(1, 15)]
     markup.add(*buttons)
     
-    bot.send_message(message.chat.id, "مرحباً بك! 👋\nيرجى اختيار **فوجك الحالي**:", parse_mode="Markdown", reply_markup=markup)
+    bot.send_message(message.chat.id, "مرحباً بك! 👋\nيرجى اختيار <b>فوجك الحالي</b>:", parse_mode="HTML", reply_markup=markup)
 
 # أمر إلغاء الطلب /cancel
 @bot.message_handler(commands=['cancel'])
@@ -70,8 +70,8 @@ def callback_inline(call):
         buttons = [types.InlineKeyboardButton(f"فوج {i}", callback_data=f"targ_{i}") for i in range(1, 15) if str(i) != curr_group]
         markup.add(*buttons)
         
-        bot.edit_message_text(f"أنت حالياً في **الفوج {curr_group}**.\nاختر **الفوج الذي تريد الانتقال إليه**:", 
-                              call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=markup)
+        bot.edit_message_text(f"أنت حالياً في <b>الفوج {curr_group}</b>.\nاختر <b>الفوج الذي تريد الانتقال إليه</b>:", 
+                              call.message.chat.id, call.message.message_id, parse_mode="HTML", reply_markup=markup)
 
     elif call.data.startswith("targ_"):
         targ_group = call.data.split("_")[1]
@@ -82,8 +82,8 @@ def callback_inline(call):
             bot.send_message(call.message.chat.id, "حدث خطأ بسيط، يرجى كتابة /start وإعادة الاختيار.")
             return
 
-        bot.edit_message_text(f"جاري البحث عن تبادل من **الفوج {curr_group}** ⬅️ **الفوج {targ_group}**...", 
-                              call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+        bot.edit_message_text(f"جاري البحث عن تبادل من <b>الفوج {curr_group}</b> ⬅️ <b>الفوج {targ_group}</b>...", 
+                              call.message.chat.id, call.message.message_id, parse_mode="HTML")
 
         conn = sqlite3.connect("swap_bot.db")
         cursor = conn.cursor()
@@ -99,10 +99,25 @@ def callback_inline(call):
             cursor.execute("DELETE FROM requests WHERE user_id = ?", (matched_user_id,))
             conn.commit()
             
-            bot.send_message(user_id, f"🎉 **وجدنا لك تبادلاً مباشراً!**\n\nالطرف الثاني: @{matched_username}\nيدرس في **الفوج {targ_group}** ويريد الانتقال لـ **الفوج {curr_group}**.\nتواصل معه الآن وتوافقا على الإجراءات!", parse_mode="Markdown")
+            # إرسال الرسائل باستخدام تنسيق HTML لتفادي مشكلة الخط السفلي _
+            msg_to_user = (
+                f"🎉 <b>وجدنا لك تبادلاً مباشراً!</b>\n\n"
+                f"الطرف الثاني: @{matched_username}\n"
+                f"يدرس في <b>الفوج {targ_group}</b> ويريد الانتقال لـ <b>الفوج {curr_group}</b>.\n"
+                f"تواصل معه الآن وتوافقا على الإجراءات!"
+            )
+            
+            msg_to_match = (
+                f"🎉 <b>وجدنا لك تبادلاً مباشراً!</b>\n\n"
+                f"الطرف الثاني: @{username}\n"
+                f"يدرس في <b>الفوج {curr_group}</b> ويريد الانتقال لـ <b>الفوج {targ_group}</b>.\n"
+                f"تواصل معه الآن وتوافقا على الإجراءات!"
+            )
+            
+            bot.send_message(user_id, msg_to_user, parse_mode="HTML")
             
             try:
-                bot.send_message(matched_user_id, f"🎉 **وجدنا لك تبادلاً مباشراً!**\n\nالطرف الثاني: @{username}\nيدرس في **الفوج {curr_group}** ويريد الانتقال لـ **الفوج {targ_group}**.\nتواصل معه الآن وتوافقا على الإجراءات!", parse_mode="Markdown")
+                bot.send_message(matched_user_id, msg_to_match, parse_mode="HTML")
             except Exception:
                 pass
         else:
@@ -110,7 +125,7 @@ def callback_inline(call):
                            (user_id, username, curr_group, targ_group))
             conn.commit()
             
-            bot.send_message(user_id, "✅ **تم تسجيل طلبك بنجاح!**\n\nإذا غيرت رأيك في أي وقت، أرسل /cancel لإلغاء طلبك.\nسيصلك إشعار فوري هنا على البوت بمجرد أن يسجل طالب من الفوج المطلوب يريد فوجك.")
+            bot.send_message(user_id, "✅ <b>تم تسجيل طلبك بنجاح!</b>\n\nإذا غيرت رأيك في أي وقت، أرسل /cancel لإلغاء طلبك.\nسيصلك إشعار فوري هنا على البوت بمجرد أن يسجل طالب من الفوج المطلوب يريد فوجك.", parse_mode="HTML")
 
         conn.close()
 
