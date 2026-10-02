@@ -1,29 +1,47 @@
-import sqlite3
+import os
+import firebase_admin
+from firebase_admin import credentials, firestore
 import telebot
 from telebot import types
+from flask import Flask
+from threading import Thread
 
-# التوكن الخاص ببوتك
+# ==========================================
+# 1. إعداد سيرفر Flask المصغر لإبقاء البوت نشطاً
+# ==========================================
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is alive and running 24/7!"
+
+def run_flask():
+    # موقع Render يحدد المنفذ تلقائياً عبر متغير البيئة PORT
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    # تشغيل Flask في خيط منفصل (Thread) لعدم تعطيل البوت
+    t = Thread(target=run_flask)
+    t.daemon = True
+    t.start()
+
+# بدء تشغيل سيرفر الويب
+keep_alive()
+
+# ==========================================
+# 2. إعداد وتوصيل Firebase
+# ==========================================
+cred = credentials.Certificate("serviceAccountKey.json")
+firebase_admin.initialize_app(cred)
+db = firestore.client()
+
+# ==========================================
+# 3. التوكن وإعداد البوت
+# ==========================================
 TOKEN = "8630024688:AAGMXmsLt1VWmfev7iE29Yi2SzXmAjLQ6ww"
 bot = telebot.TeleBot(TOKEN)
 
-# 1. إعداد قاعدة البيانات
-def init_db():
-    conn = sqlite3.connect("swap_bot.db")
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS requests (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            current_group TEXT,
-            target_group TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-init_db()
-
-# تخزين مؤقت لحالات المستخدمين
 user_data = {}
 
 # أمر البداية /start
@@ -47,18 +65,15 @@ def send_welcome(message):
 # أمر إلغاء الطلب /cancel
 @bot.message_handler(commands=['cancel'])
 def cancel_request(message):
-    user_id = message.from_user.id
-    conn = sqlite3.connect("swap_bot.db")
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM requests WHERE user_id = ?", (user_id,))
-    conn.commit()
-    conn.close()
+    user_id = str(message.from_user.id)
+    db.collection("requests").document(user_id).delete()
     bot.send_message(message.chat.id, "✅ تم إلغاء طلبك وحذفه من قائمة الانتظار بنجاح.")
 
 # معالجة الضغط على الأزرار
 @bot.callback_query_handler(func=lambda call: True)
 def callback_inline(call):
     user_id = call.from_user.id
+    user_id_str = str(user_id)
     
     if call.data.startswith("curr_"):
         curr_group = call.data.split("_")[1]
@@ -85,21 +100,18 @@ def callback_inline(call):
         bot.edit_message_text(f"جاري البحث عن تبادل من <b>الفوج {curr_group}</b> ⬅️ <b>الفوج {targ_group}</b>...", 
                               call.message.chat.id, call.message.message_id, parse_mode="HTML")
 
-        conn = sqlite3.connect("swap_bot.db")
-        cursor = conn.cursor()
-        
-        # البحث عن توافق
-        cursor.execute("SELECT user_id, username FROM requests WHERE current_group = ? AND target_group = ?", 
-                       (targ_group, curr_group))
-        match = cursor.fetchone()
+        requests_ref = db.collection("requests")
+        query = requests_ref.where("current_group", "==", targ_group).where("target_group", "==", curr_group).limit(1)
+        matches = query.get()
 
-        if match:
-            matched_user_id, matched_username = match
+        if len(matches) > 0:
+            matched_doc = matches[0]
+            matched_data = matched_doc.to_dict()
+            matched_user_id = int(matched_doc.id)
+            matched_username = matched_data.get("username")
             
-            cursor.execute("DELETE FROM requests WHERE user_id = ?", (matched_user_id,))
-            conn.commit()
+            requests_ref.document(matched_doc.id).delete()
             
-            # إرسال الرسائل باستخدام تنسيق HTML لتفادي مشكلة الخط السفلي _
             msg_to_user = (
                 f"🎉 <b>وجدنا لك تبادلاً مباشراً!</b>\n\n"
                 f"الطرف الثاني: @{matched_username}\n"
@@ -121,13 +133,14 @@ def callback_inline(call):
             except Exception:
                 pass
         else:
-            cursor.execute("INSERT OR REPLACE INTO requests (user_id, username, current_group, target_group) VALUES (?, ?, ?, ?)",
-                           (user_id, username, curr_group, targ_group))
-            conn.commit()
+            requests_ref.document(user_id_str).set({
+                "username": username,
+                "current_group": curr_group,
+                "target_group": targ_group
+            })
             
             bot.send_message(user_id, "✅ <b>تم تسجيل طلبك بنجاح!</b>\n\nإذا غيرت رأيك في أي وقت، أرسل /cancel لإلغاء طلبك.\nسيصلك إشعار فوري هنا على البوت بمجرد أن يسجل طالب من الفوج المطلوب يريد فوجك.", parse_mode="HTML")
 
-        conn.close()
-
-print("البوت يعمل الآن بنجاح...")
+print("البوت وسيرفر الويب يعملان الآن بنجاح...")
 bot.infinity_polling()
+        
