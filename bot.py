@@ -3,7 +3,7 @@ import telebot
 from telebot import types
 
 # التوكن الخاص ببوتك
-TOKEN = "8630024688:AAGMXmsLt1VWmfev7iE29Yi2SzXmAjLQ6ww"
+TOKEN = ""
 bot = telebot.TeleBot(TOKEN)
 
 # 1. إعداد قاعدة البيانات
